@@ -13,7 +13,9 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from .views import SuperAdminDetailView,BuildingAdminView
-from .ai.views import AIChatView
+# from ai_app.prompts import FINANCIAL_ANALYSIS_PROMPT
+from .ai.views import AIChatView,AIFinancialReport
+# from ai_app.views import AIChatView,AIFinancialReport
 router = DefaultRouter()
 router.register('users', UserViewSet)
 router.register('members', MemberViewSet,basename='members')
@@ -42,6 +44,7 @@ urlpatterns=[
     path('superadmin/',SuperAdminDetailView.as_view(),name='superAdmin'),
     path('buildingadmin/',BuildingAdminView.as_view(),name='buildingAdmin'),
     path("ai/chat/", AIChatView.as_view()),
+    path("ai/financial-report/", AIFinancialReport.as_view()),
 
 
 

@@ -148,4 +148,11 @@ REST_FRAMEWORK = {
 }
 
 AUTH_USER_MODEL = 'Finance.User'  
-GEMINI_API_KEY="AIzaSyDy1GuHXJ2bw2DCu1BaoKPcKGqJPUU3Dbc"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
