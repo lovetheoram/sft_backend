@@ -1,0 +1,3 @@
+# This file ensures the logs/ directory is tracked in version control.
+# Django will write structured rotating logs to django.log in this directory.
+# The actual .log files are excluded via .gitignore.

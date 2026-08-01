@@ -5,3 +5,7 @@ __pycache__/
 
 # Ignore environment variables / secrets
 .env
+
+# Ignore rotating log files (logs/ directory is tracked via .gitkeep)
+logs/*.log
+logs/*.log.*
