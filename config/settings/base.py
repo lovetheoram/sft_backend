@@ -130,6 +130,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
     "http://localhost:8888",
     "http://127.0.0.1:5173",
+    "https://sfet.netlify.app",
+    "https://sft-backend-apih.onrender.com",
     "https://sanjeevpratap99209920.pythonanywhere.com",
 ]
 CORS_ALLOW_ALL_ORIGINS = DEBUG
