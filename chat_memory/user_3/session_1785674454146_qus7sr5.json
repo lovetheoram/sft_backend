@@ -1,0 +1,58 @@
+[
+  {
+    "role": "user",
+    "content": "hey ,give me financial summry of 2024-35"
+  },
+  {
+    "role": "assistant",
+    "content": "No data available."
+  },
+  {
+    "role": "user",
+    "content": "financial summary"
+  },
+  {
+    "role": "assistant",
+    "content": "Information was not found."
+  },
+  {
+    "role": "user",
+    "content": "hi"
+  },
+  {
+    "role": "assistant",
+    "content": "I'm here to assist you with any financial-related inquiries. How can I help you today?"
+  },
+  {
+    "role": "user",
+    "content": "tell me who am i"
+  },
+  {
+    "role": "assistant",
+    "content": "Unfortunately, I'm a society financial assistant, and our conversation doesn't contain any information about your identity."
+  },
+  {
+    "role": "user",
+    "content": "dont u remember my name"
+  },
+  {
+    "role": "assistant",
+    "content": "I'm a financial assistant, and our conversation just started. I don't have any prior knowledge or memory of our previous conversations or your name. Each time you interact with me, it's a new conversation."
+  },
+  {
+    "role": "user",
+    "content": "who are u"
+  },
+  {
+    "role": "assistant",
+    "content": "I am a society financial assistant. I'm here to provide information and assistance with financial-related topics."
+  },
+  {
+    "role": "user",
+    "content": "what can u do"
+  },
+  {
+    "role": "assistant",
+    "content": "I can assist with financial inquiries."
+  }
+]

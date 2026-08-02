@@ -29,14 +29,20 @@ class FlatSerializer(serializers.ModelSerializer):
 
 class CategorySerializer(serializers.ModelSerializer):
     building = BuildingSerializer(read_only=True)
-    building_id = serializers.PrimaryKeyRelatedField(queryset=Building.objects.all(), write_only=True)
+    building_id = serializers.PrimaryKeyRelatedField(
+        queryset=Building.objects.all(), write_only=True, required=False, allow_null=True
+    )
 
     class Meta:
         model = Category
         fields = ['id', 'name', 'building', 'building_id']
 
     def create(self, validated_data):
-        building = validated_data.pop('building_id')
+        building = validated_data.pop('building_id', None)
+        if not building:
+            request = self.context.get('request')
+            if request and hasattr(request, 'user'):
+                building = getattr(getattr(request.user, "flat", None), "building", None)
         return Category.objects.create(building=building, **validated_data)
 
 

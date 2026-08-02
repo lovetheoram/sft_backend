@@ -86,7 +86,6 @@ def get_opening_balance(start_year, building):
         building=building,
         date__lt=date(start_year, 4, 1),
         status='verified',
-        special_charge__isnull=True
     ).aggregate(total=models.Sum("amount"))["total"] or 0
 
     expense_total = Expense.objects.filter(

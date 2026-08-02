@@ -1,0 +1,6 @@
+Conversation Summary:
+
+User Shi initiated a conversation, asking about top contributors. 
+The AI responded with "No data available."
+Shi then asked "who am I" and the AI replied with their name, "Shi."
+Shi expressed surprise, saying "wow, u remember me."

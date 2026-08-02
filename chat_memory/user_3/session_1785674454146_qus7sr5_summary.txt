@@ -1,0 +1,6 @@
+Conversation Summary:
+
+You interacted with a society financial assistant. 
+You asked 'tell me who am i', but the assistant replied it doesn't have any prior knowledge or memory of your identity. 
+You then asked 'dont u remember my name', but the assistant reiterated it's a new conversation and doesn't retain information. 
+You also asked 'who are u', and the assistant replied it's a financial assistant, assisting with financial inquiries.
