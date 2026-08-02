@@ -11,7 +11,12 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-prod-default-key-change-in
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG' if DEBUG else 'INFO')
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = [
+    h.strip() for h in os.getenv(
+        'ALLOWED_HOSTS',
+        'localhost,127.0.0.1,sanjeevpratap99209920.pythonanywhere.com,sft-backend-apih.onrender.com,.onrender.com'
+    ).split(',') if h.strip()
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',

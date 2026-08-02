@@ -16,6 +16,10 @@ ALLOWED_HOSTS = [
         'sft-backend-apih.onrender.com,.onrender.com,localhost,127.0.0.1'
     ).split(',') if h.strip()
 ]
+# Ensure Render production domains are explicitly included if not already present
+for host in ['sft-backend-apih.onrender.com', '.onrender.com']:
+    if host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(host)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 CORS_ALLOW_ALL_ORIGINS = False
