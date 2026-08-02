@@ -32,8 +32,8 @@ class IncomeSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        building = validated_data.pop('building_id')
-        special_charge = validated_data.pop('special_charge_id', None)
+        building = validated_data.pop('building_id', None) or validated_data.pop('building', None)
+        special_charge = validated_data.pop('special_charge_id', None) or validated_data.pop('special_charge', None)
         return Income.objects.create(building=building, special_charge=special_charge, **validated_data)
 
 
@@ -52,6 +52,6 @@ class ExpenseSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        category = validated_data.pop('category_id')
-        building = validated_data.pop('building_id')
+        category = validated_data.pop('category_id', None) or validated_data.pop('category', None)
+        building = validated_data.pop('building_id', None) or validated_data.pop('building', None)
         return Expense.objects.create(category=category, building=building, **validated_data)
