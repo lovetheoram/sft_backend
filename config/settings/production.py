@@ -10,17 +10,21 @@ from .base import *  # noqa: F401, F403
 DEBUG = False
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'WARNING')
 
-ALLOWED_HOSTS = os.getenv(
-    'ALLOWED_HOSTS',
-    'your-app.pythonanywhere.com'
-).split(',')
+ALLOWED_HOSTS = [
+    h.strip() for h in os.getenv(
+        'ALLOWED_HOSTS',
+        'sft-backend-apih.onrender.com,.onrender.com,localhost,127.0.0.1'
+    ).split(',') if h.strip()
+]
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = os.getenv(
-    'CORS_ALLOWED_ORIGINS',
-    'https://your-frontend.netlify.app'
-).split(',')
+CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv(
+        'CORS_ALLOWED_ORIGINS',
+        'https://sfet.netlify.app'
+    ).split(',') if o.strip()
+]
 
 # ── Security Headers ──────────────────────────────────────────────────────────
 # HSTS — tell browsers to only use HTTPS for 1 year
