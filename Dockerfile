@@ -1,5 +1,5 @@
 # =============================================================================
-# 🐍 DJANGO BACKEND DOCKERFILE (RENDER READY)
+# 🐍 PYTHON / DJANGO BACKEND DOCKERFILE (RENDER READY)
 # =============================================================================
 FROM python:3.11-slim
 
@@ -28,5 +28,5 @@ COPY . /app/
 # Expose port 8000
 EXPOSE 8000
 
-# Run collectstatic & start Gunicorn
-CMD ["sh", "-c", "python manage.py collectstatic --noinput && gunicorn src_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 3"]
+# Collect static & start Gunicorn via python -m gunicorn
+CMD ["sh", "-c", "python manage.py collectstatic --noinput && python -m gunicorn src_backend.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 3"]
