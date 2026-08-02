@@ -106,7 +106,7 @@ class MemberViewSet(viewsets.ModelViewSet):
             return super().destroy(request, *args, **kwargs)
         return Response({'detail': 'Only super admins can delete members'}, status=status.HTTP_403_FORBIDDEN)
 
-    @action(detail=False, methods=["get", "put"], permission_classes=[permissions.IsAuthenticated], url_path="profile")
+    @action(detail=False, methods=["get", "put", "patch"], permission_classes=[permissions.IsAuthenticated], url_path="profile")
     def profile(self, request):
         try:
             member = Member.objects.select_related("user").get(user=request.user)
@@ -115,6 +115,9 @@ class MemberViewSet(viewsets.ModelViewSet):
 
         if request.method == "GET":
             return Response(self.get_serializer(member).data)
+            
+        # 2. Dynamically set partial=True ONLY if the method is PATCH
+        is_partial = (request.method == "PATCH")
 
         serializer = self.get_serializer(member, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

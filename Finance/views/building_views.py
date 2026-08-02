@@ -4,6 +4,7 @@
 =============================================================================
 """
 
+from django.db import models
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
@@ -71,13 +72,20 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        building = getattr(user.flat, "building", None)
-
         if is_super_admin(user):
-            return Category.objects.all()
-        elif building:
-            return Category.objects.filter(building=building)
-        return Category.objects.none()
+            return Category.objects.all().order_by('name')
+
+        building_id = self.request.query_params.get('building_id')
+        user_building = getattr(getattr(user, "flat", None), "building", None)
+
+        if building_id:
+            return Category.objects.filter(building_id=building_id).order_by('name')
+        elif user_building:
+            return Category.objects.filter(
+                models.Q(building=user_building) | models.Q(building__isnull=True)
+            ).order_by('name')
+
+        return Category.objects.all().order_by('name')
 
 
 class SpecialChargeViewSet(viewsets.ModelViewSet):
@@ -89,15 +97,26 @@ class SpecialChargeViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if is_super_admin(user):
             return self.queryset
-        elif hasattr(user, "flat") and user.flat.building:
-            return self.queryset.filter(building=user.flat.building)
-        return SpecialCharge.objects.none()
+
+        building_id = self.request.query_params.get('building_id')
+        user_building = getattr(getattr(user, 'flat', None), 'building', None)
+
+        if building_id:
+            return self.queryset.filter(building_id=building_id)
+        elif user_building:
+            return self.queryset.filter(
+                models.Q(building=user_building) | models.Q(building__isnull=True)
+            )
+
+        return self.queryset
 
     def perform_create(self, serializer):
         user = self.request.user
-        building = getattr(user.flat, "building", None)
-        member = Member.objects.get(user=user)
-
-        if not building:
+        user_building = getattr(getattr(user, 'flat', None), 'building', None)
+        if is_super_admin(user):
+            serializer.save()
+            return
+        if not user_building:
             raise PermissionDenied("You are not associated with a building.")
-        serializer.save(building=building, member=member)
+        member = getattr(user, 'member', None)
+        serializer.save(building=user_building, member=member)

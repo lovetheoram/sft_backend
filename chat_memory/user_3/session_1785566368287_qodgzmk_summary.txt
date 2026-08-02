@@ -1,0 +1,6 @@
+Updated conversation summary:
+
+[AIMessage(content="I don't have any information about a person named Ann. How can I assist you today?", additional_kwargs={}, response_metadata={}, tool_calls=[], invalid_tool_calls=[]), 
+HumanMessage(content='ok,i m ann,', additional_kwargs={}, response_metadata={}), 
+AIMessage(content="Hello Ann. I'm a society financial assistant. I can help you with financial questions or concerns. What's on your mind?", additional_kwargs={}, response_metadata={}, tool_calls=[], invalid_tool_calls=[]), 
+HumanMessage(content='what can u do', additional_kwargs={}, response_meta

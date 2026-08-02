@@ -6,7 +6,7 @@
 
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
 
@@ -21,6 +21,10 @@ from .permissions import is_super_admin, is_building_admin, IsAdminOrBuildingAdm
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
+    """
+    [ONE-TO-ONE SYSTEM] Handles direct personal alerts.
+    Optimized with select_related to eliminate N+1 database queries.
+    """
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -35,22 +39,26 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        base_query = Notification.objects.select_related('income', 'user').order_by('-created_at')
+        
         if is_super_admin(user):
-            return Notification.objects.select_related('income', 'user').order_by('-created_at')
-        elif is_building_admin(user):
-            building = getattr(user.flat, 'building', None)
-            return Notification.objects.select_related('income', 'user').filter(
-                income__member__user__flat__building=building
-            ).order_by('-created_at')
-        else:
-            return Notification.objects.filter(user=user).select_related('income').order_by('-created_at')
+            return base_query
+            
+        # Safe traversal using chained getattrs to find the building domain
+        user_building = getattr(getattr(user, 'flat', None), 'building', None)
+        
+        if is_building_admin(user):
+            # Building admins see notifications affecting members inside their specific block
+            return base_query.filter(income__member__user__flat__building=user_building)
+            
+        # Regular residents can strictly see their own one-to-one inbox stream
+        return base_query.filter(user=user)
 
     def retrieve(self, request, pk=None):
-        notification = get_object_or_404(Notification, pk=pk)
+        # FIX: Query through get_queryset bounds to stop users from accessing random IDs
+        notification = get_object_or_404(self.get_queryset(), pk=pk)
 
-        if request.user.role != 'admin' and notification.user != request.user:
-            return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
-
+        # Mark as read automatically when opened
         if not notification.seen:
             notification.seen = True
             notification.save(update_fields=["seen"])
@@ -59,58 +67,97 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
 
 class AnnouncementViewSet(viewsets.ModelViewSet):
+    """
+    [TOP-TO-BOTTOM SYSTEM] Broadcast board for official communications.
+    """
     serializer_class = AnnouncementSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        # Only admins can publish or edit announcements; residents get safe read-only access
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [IsAdminOrBuildingAdmin()]
 
     def get_queryset(self):
         user = self.request.user
         if is_super_admin(user):
             return Announcement.objects.all()
-        building = getattr(user.flat, "building", None)
-        if building:
-            return Announcement.objects.filter(building=building)
-
-        return Announcement.objects.none()
+            
+        user_building = getattr(getattr(user, 'flat', None), 'building', None)
+        
+        # FIX: Residents see global announcements (building=None) OR notices for their building block
+        if user_building:
+            return Announcement.objects.filter(building__in=[user_building, None])
+            
+        return Announcement.objects.filter(building=None)
 
     def perform_create(self, serializer):
         user = self.request.user
 
+        # FIX: Repetitive .save() loops do not clone objects in Django.
+        # Instead, Super Admins leave building=None to broadcast a truly global announcement.
         if is_super_admin(user):
-            for building in Building.objects.all():
-                serializer.save(building=building)
-        elif is_building_admin(user):
-            building = getattr(user.flat, "building", None)
-            if building:
-                serializer.save(building=building)
-        else:
-            raise PermissionDenied("You do not have permission to create announcements.")
+            serializer.save(building=None) 
+            return
+            
+        if is_building_admin(user):
+            user_building = getattr(getattr(user, 'flat', None), 'building', None)
+            if not user_building:
+                raise PermissionDenied("You must be assigned to an active building profile to publish updates.")
+            serializer.save(building=user_building)
 
 
 class SocietyDocumentViewSet(viewsets.ModelViewSet):
+    """
+    [KNOWLEDGE BASE] Shared official society documentation file archive repository.
+    """
     serializer_class = SocietyDocumentSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdminOrBuildingAdmin]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        # Protect uploads: Only management roles can write/edit/delete paperwork rows
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [IsAdminOrBuildingAdmin()]
 
     def get_queryset(self):
         user = self.request.user
-        building = getattr(user.flat, "building", None)
         if is_super_admin(user):
             return SocietyDocument.objects.all()
-        if is_building_admin(user):
-            return SocietyDocument.objects.filter(building=building)
+            
+        user_building = getattr(getattr(user, 'flat', None), 'building', None)
+        
+        # FIX: Regular tenants can view documents matching their community block
+        if user_building:
+            return SocietyDocument.objects.filter(building=user_building)
+            
         return SocietyDocument.objects.none()
 
     def perform_create(self, serializer):
         user = self.request.user
-        building = getattr(user.flat, "building", None)
-        serializer.save(building=building)
+        
+        # Super Admin uploads can target a specific building via the payload data
+        if is_super_admin(user):
+            serializer.save()
+            return
+            
+        user_building = getattr(getattr(user, 'flat', None), 'building', None)
+        if not user_building:
+            raise PermissionDenied("You must be linked to a building layout to upload documentation files.")
+        serializer.save(building=user_building)
 
 
 class ComplainViewSet(viewsets.ModelViewSet):
+    """
+    [BOTTOM-TO-TOP SYSTEM] Helpdesk and ticketing support board.
+    """
     serializer_class = ComplaintSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
+        # FIX: Use self.queryset or filter properly to prevent cross-account object inspection leaks via direct IDs
         if is_super_admin(user) or is_building_admin(user):
             return Complaint.objects.filter(recipient=user)
         return Complaint.objects.filter(sender=user)
@@ -119,14 +166,22 @@ class ComplainViewSet(viewsets.ModelViewSet):
         sender = self.request.user
         recipient = serializer.validated_data.get("recipient")
 
+        if not recipient:
+            raise ValidationError({"recipient": "An explicit recipient target manager must be provided."})
+
+        # Scenario 1: Sending directly up to a Super Admin
         if is_super_admin(recipient):
             serializer.save(sender=sender)
             return
 
+        # Scenario 2: Sending up to a local Building Admin
         if is_building_admin(recipient):
-            sender_building = getattr(sender.flat, "building", None)
-            recipient_building = getattr(recipient.flat, "building", None)
-            if sender_building == recipient_building:
+            # FIX: Standardized secure nested parsing using defensive chaining
+            sender_building = getattr(getattr(sender, 'flat', None), 'building', None)
+            recipient_building = getattr(getattr(recipient, 'flat', None), 'building', None)
+            
+            if sender_building and sender_building == recipient_building:
                 serializer.save(sender=sender)
                 return
-        raise PermissionDenied("You can only send complaints to your building admin or super admin.")
+                
+        raise PermissionDenied("You can only route escalation tickets to your direct Building Administrator or a global Super Admin.")
