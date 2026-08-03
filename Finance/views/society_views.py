@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
+from django.db.models import Q
 
 from Finance.models import (
     Notification, Announcement, SocietyDocument, Complaint, Building
@@ -39,7 +40,18 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        base_query = Notification.objects.select_related('income', 'user').order_by('-created_at')
+        base_query = Notification.objects.select_related(
+            'income',
+            'income__member',
+            'income__member__user',
+            'income__member__user__flat',
+            'income__member__user__flat__building',
+            'income__building',
+            'income__special_charge',
+            'user',
+            'user__flat',
+            'user__flat__building'
+        ).order_by('-created_at')
         
         if is_super_admin(user):
             return base_query
@@ -48,8 +60,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
         user_building = getattr(getattr(user, 'flat', None), 'building', None)
         
         if is_building_admin(user):
-            # Building admins see notifications affecting members inside their specific block
-            return base_query.filter(income__member__user__flat__building=user_building)
+            if user_building:
+                return base_query.filter(Q(user=user) | Q(income__member__user__flat__building=user_building))
+            return base_query.filter(user=user)
             
         # Regular residents can strictly see their own one-to-one inbox stream
         return base_query.filter(user=user)
@@ -81,16 +94,17 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        base_qs = Announcement.objects.select_related('building')
         if is_super_admin(user):
-            return Announcement.objects.all()
+            return base_qs.all()
             
         user_building = getattr(getattr(user, 'flat', None), 'building', None)
         
         # FIX: Residents see global announcements (building=None) OR notices for their building block
         if user_building:
-            return Announcement.objects.filter(building__in=[user_building, None])
+            return base_qs.filter(building__in=[user_building, None])
             
-        return Announcement.objects.filter(building=None)
+        return base_qs.filter(building=None)
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -157,10 +171,10 @@ class ComplainViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # FIX: Use self.queryset or filter properly to prevent cross-account object inspection leaks via direct IDs
+        base_qs = Complaint.objects.select_related('sender', 'recipient', 'building')
         if is_super_admin(user) or is_building_admin(user):
-            return Complaint.objects.filter(recipient=user)
-        return Complaint.objects.filter(sender=user)
+            return base_qs.filter(recipient=user)
+        return base_qs.filter(sender=user)
 
     def perform_create(self, serializer):
         sender = self.request.user

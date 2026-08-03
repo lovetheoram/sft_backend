@@ -14,9 +14,14 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'DEBUG' if DEBUG else 'INFO')
 ALLOWED_HOSTS = [
     h.strip() for h in os.getenv(
         'ALLOWED_HOSTS',
-        'localhost,127.0.0.1,sanjeevpratap99209920.pythonanywhere.com,sft-backend-apih.onrender.com,.onrender.com'
+        '*'
     ).split(',') if h.strip()
 ]
+
+# Ensure Render, local, PythonAnywhere, and wildcard hosts are explicitly allowed
+for default_host in ['*', 'sft-backend-apih.onrender.com', '.onrender.com', 'localhost', '127.0.0.1']:
+    if default_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(default_host)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -82,6 +87,25 @@ else:
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+
+REDIS_URL = os.getenv('REDIS_URL')
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            }
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "sft-local-cache",
         }
     }
 
