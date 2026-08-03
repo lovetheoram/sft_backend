@@ -13,11 +13,11 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'WARNING')
 ALLOWED_HOSTS = [
     h.strip() for h in os.getenv(
         'ALLOWED_HOSTS',
-        'sft-backend-apih.onrender.com,.onrender.com,localhost,127.0.0.1'
+        '*'
     ).split(',') if h.strip()
 ]
-# Ensure Render production domains are explicitly included if not already present
-for host in ['sft-backend-apih.onrender.com', '.onrender.com']:
+# Ensure Render production domains and wildcard are explicitly included
+for host in ['*', 'sft-backend-apih.onrender.com', '.onrender.com', 'localhost', '127.0.0.1']:
     if host not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(host)
 

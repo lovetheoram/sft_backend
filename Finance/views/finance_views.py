@@ -85,7 +85,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     """
     Manages building expense logs. Regular residents are fully blocked from accessing this system.
     """
-    queryset = Expense.objects.select_related("category").all()
+    queryset = Expense.objects.select_related("category", "building").all()
     serializer_class = ExpenseSerializer
 
     def get_permissions(self):

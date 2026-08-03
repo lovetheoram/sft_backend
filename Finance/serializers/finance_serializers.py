@@ -32,9 +32,20 @@ class IncomeSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        building = validated_data.pop('building_id', None) or validated_data.pop('building', None)
-        special_charge = validated_data.pop('special_charge_id', None) or validated_data.pop('special_charge', None)
-        return Income.objects.create(building=building, special_charge=special_charge, **validated_data)
+        building = validated_data.pop('building', None)
+        building_id = validated_data.pop('building_id', None)
+        final_building = building or building_id
+
+        special_charge = validated_data.pop('special_charge', None)
+        special_charge_id = validated_data.pop('special_charge_id', None)
+        final_special_charge = special_charge or special_charge_id
+
+        if final_building is not None:
+            validated_data['building'] = final_building
+        if final_special_charge is not None:
+            validated_data['special_charge'] = final_special_charge
+
+        return Income.objects.create(**validated_data)
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
@@ -52,6 +63,17 @@ class ExpenseSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        category = validated_data.pop('category_id', None) or validated_data.pop('category', None)
-        building = validated_data.pop('building_id', None) or validated_data.pop('building', None)
-        return Expense.objects.create(category=category, building=building, **validated_data)
+        category = validated_data.pop('category', None)
+        category_id = validated_data.pop('category_id', None)
+        final_category = category or category_id
+
+        building = validated_data.pop('building', None)
+        building_id = validated_data.pop('building_id', None)
+        final_building = building or building_id
+
+        if final_category is not None:
+            validated_data['category'] = final_category
+        if final_building is not None:
+            validated_data['building'] = final_building
+
+        return Expense.objects.create(**validated_data)

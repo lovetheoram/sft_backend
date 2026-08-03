@@ -40,7 +40,7 @@ class BuildingViewSet(viewsets.ModelViewSet):
 
 
 class FlatViewSet(viewsets.ModelViewSet):
-    queryset = Flat.objects.all()
+    queryset = Flat.objects.select_related('building').all()
     serializer_class = FlatSerializer
     permission_classes = [AllowAny]
 
@@ -89,7 +89,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 
 class SpecialChargeViewSet(viewsets.ModelViewSet):
-    queryset = SpecialCharge.objects.select_related('building', 'member__user').all()
+    queryset = SpecialCharge.objects.select_related(
+        'building',
+        'member',
+        'member__user',
+        'member__user__flat'
+    ).all()
     serializer_class = SpecialChargeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
