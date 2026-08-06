@@ -115,11 +115,11 @@ class MemberViewSet(viewsets.ModelViewSet):
 
         if request.method == "GET":
             return Response(self.get_serializer(member).data)
-            
-        # 2. Dynamically set partial=True ONLY if the method is PATCH
+
+        # Dynamically set partial=True ONLY if the method is PATCH
         is_partial = (request.method == "PATCH")
 
-        serializer = self.get_serializer(member, data=request.data, partial=True)
+        serializer = self.get_serializer(member, data=request.data, partial=is_partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
