@@ -9,7 +9,7 @@ from datetime import date
 from calendar import month_abbr
 from django.db import models
 
-from Finance.models import Income, Expense
+from Finance.models import Income, Expense, Member
 
 
 def get_fy_months(start_year):
@@ -23,10 +23,27 @@ def get_fy_months(start_year):
 
 
 def get_member_income_table(start_year, building):
-    """Generates monthly income breakdown per member for a given FY and building."""
+    """Generates monthly income breakdown per member for a given FY and building. Pre-populates all building residents."""
     months = get_fy_months(start_year)
     start_date = date(start_year, 4, 1)
     end_date = date(start_year + 1, 3, 31)
+
+    # Pre-populate all residents registered under this building so every flat appears in the ideal sheet
+    building_members = Member.objects.filter(
+        user__flat__building=building
+    ).select_related("user", "user__flat").order_by("user__flat__number", "user__username")
+
+    member_rows = {}
+    for member in building_members:
+        name = member.user.get_full_name() or member.user.username
+        flat = member.user.flat.number if (member.user and member.user.flat) else ""
+        member_rows[member.id] = {
+            "name": name,
+            "flat": flat,
+            "monthly": {m: 0 for m in months},
+            "special_income": defaultdict(int),
+            "total": 0
+        }
 
     incomes = Income.objects.filter(
         building=building,
@@ -34,19 +51,17 @@ def get_member_income_table(start_year, building):
         status='verified',
     ).select_related("member__user", "member__user__flat", "special_charge")
 
-    member_rows = {}
     total_row = {m: 0 for m in months}
     total_special = defaultdict(int)
     grand_total = 0
 
     for income in incomes:
         member = income.member
-        name = member.user.get_full_name()
-        flat = member.user.flat.number if member.user.flat else ""
-        month_label = f"{income.date.strftime('%b')}-{str(income.date.year)[-2:]}"
         member_id = member.id
 
         if member_id not in member_rows:
+            name = member.user.get_full_name() or member.user.username if member.user else "Unknown Member"
+            flat = member.user.flat.number if (member.user and member.user.flat) else ""
             member_rows[member_id] = {
                 "name": name,
                 "flat": flat,
@@ -54,6 +69,8 @@ def get_member_income_table(start_year, building):
                 "special_income": defaultdict(int),
                 "total": 0
             }
+
+        month_label = f"{income.date.strftime('%b')}-{str(income.date.year)[-2:]}"
 
         if income.special_charge:
             title = income.special_charge.title

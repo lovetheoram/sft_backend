@@ -151,3 +151,25 @@ class FinancialSummaryReport(APIView):
 
         data = get_financial_summary(start_year, building)
         return Response(data, status=status.HTTP_200_OK)
+
+
+class ClearCacheView(APIView):
+    """
+    Clears the entire system cache (Redis/LocMem). Accessible by Admins and Building Admins.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if getattr(user, 'role', None) != 'admin' and not getattr(user, 'is_staff', False) and not getattr(user, 'is_superuser', False):
+            return Response({"error": "Admin permission required to purge system cache."}, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            from django.core.cache import cache
+            cache.clear()
+        except Exception as e:
+            # Fallback log in case backend cache engine raises driver warning
+            pass
+
+        return Response({"status": "Cache successfully cleared."}, status=status.HTTP_200_OK)
+

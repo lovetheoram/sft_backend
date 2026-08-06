@@ -21,7 +21,7 @@ from .building_views import (
 )
 
 from .finance_views import (
-    IncomeViewSet, ExpenseViewSet, FinancialSummaryReport
+    IncomeViewSet, ExpenseViewSet, FinancialSummaryReport, ClearCacheView
 )
 
 from .society_views import (
