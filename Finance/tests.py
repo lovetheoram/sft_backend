@@ -309,3 +309,164 @@ class ExceptionHandlerTest(TestCase):
             f"Expected error response, got: {data}"
         )
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 8: Expense Lifecycle & Permissions
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ExpenseLifecycleTest(TestCase):
+    """
+    Verifies expense creation workflows:
+    - Building admin can create expense (auto-tied to building)
+    - Super admin can create expense
+    - Resident is blocked with 403 Forbidden
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.building = Building.objects.create(name="Expense Test Tower")
+        self.category = Category.objects.create(name="Maintenance", building=self.building)
+
+        # Building admin setup
+        self.flat_admin = Flat.objects.create(building=self.building, number="ADM1")
+        self.admin = User.objects.create_user(
+            username='expadmin', password='adminpass',
+            role='admin', flat=self.flat_admin
+        )
+
+        # Super admin setup (no flat)
+        self.superadmin = User.objects.create_user(
+            username='expsuper', password='superpass',
+            role='admin', flat=None
+        )
+
+        # Regular resident setup
+        self.flat_res = Flat.objects.create(building=self.building, number="R101")
+        self.resident = User.objects.create_user(
+            username='expresident', password='respass',
+            role='resident', flat=self.flat_res
+        )
+
+    def _get_token(self, username, password):
+        resp = self.client.post('/api/token/', {'username': username, 'password': password})
+        return resp.data['access']
+
+    def test_building_admin_creates_expense(self):
+        """Building Admin can create an expense successfully."""
+        token = self._get_token('expadmin', 'adminpass')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        resp = self.client.post('/api/expense/', {
+            'amount': 2500,
+            'category': self.category.id,
+            'date': str(date.today()),
+            'description': 'Elevator repair'
+        })
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(float(resp.data['amount']), 2500.0)
+
+    def test_super_admin_creates_expense(self):
+        """Super Admin can create an expense successfully."""
+        token = self._get_token('expsuper', 'superpass')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        resp = self.client.post('/api/expense/', {
+            'amount': 4000,
+            'category_id': self.category.id,
+            'building_id': self.building.id,
+            'date': str(date.today()),
+            'description': 'Roof waterproofing'
+        })
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+    def test_resident_cannot_create_expense(self):
+        """Resident is blocked from creating expenses with 403 Forbidden."""
+        token = self._get_token('expresident', 'respass')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        resp = self.client.post('/api/expense/', {
+            'amount': 1000,
+            'category_id': self.category.id,
+            'date': str(date.today())
+        })
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 9: Pagination, Filters & Data Scoping
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PaginationAndScopeTest(TestCase):
+    """
+    Verifies:
+    - Income default scope (personal only) vs scope=all (all building incomes for admin)
+    - Limit / Offset pagination response structure (count, results, has_more)
+    - Filtering on ExpenseViewSet
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.building = Building.objects.create(name="Scope Test Tower")
+        self.flat1 = Flat.objects.create(building=self.building, number="101")
+        self.flat2 = Flat.objects.create(building=self.building, number="102")
+
+        self.user1 = User.objects.create_user(username='scopeuser1', password='pass123', role='admin', flat=self.flat1)
+        self.user2 = User.objects.create_user(username='scopeuser2', password='pass123', role='resident', flat=self.flat2)
+
+        self.member1 = Member.objects.get(user=self.user1)
+        self.member2 = Member.objects.get(user=self.user2)
+
+        # Incomes
+        Income.objects.create(member=self.member1, building=self.building, amount=1000, date=date.today())
+        Income.objects.create(member=self.member2, building=self.building, amount=2000, date=date.today())
+
+        # Category & Expenses
+        self.category = Category.objects.create(name="Repairs", building=self.building)
+        for i in range(15):
+            Expense.objects.create(
+                category=self.category,
+                building=self.building,
+                amount=100 + (i * 10),
+                date=date.today()
+            )
+
+    def _get_token(self, username, password='pass123'):
+        resp = self.client.post('/api/token/', {'username': username, 'password': password})
+        return resp.data['access']
+
+    def test_income_default_scope_returns_only_personal_payments(self):
+        """GET /api/income/ defaults to returning only personal payments even for building admin."""
+        token = self._get_token('scopeuser1')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        resp = self.client.get('/api/income/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # Should return 1 personal income record, not user2's record
+        data = resp.data.get('results') if isinstance(resp.data, dict) else resp.data
+        self.assertEqual(len(data), 1)
+        self.assertEqual(float(data[0]['amount']), 1000.0)
+
+    def test_income_admin_scope_returns_all_building_payments(self):
+        """GET /api/income/?scope=all returns all building income payments for admin."""
+        token = self._get_token('scopeuser1')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        resp = self.client.get('/api/income/?scope=all')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.data.get('results') if isinstance(resp.data, dict) else resp.data
+        self.assertEqual(len(data), 2)
+
+    def test_expense_limit_offset_pagination(self):
+        """GET /api/expense/?limit=10 returns 10 items and has_more=True."""
+        token = self._get_token('scopeuser1')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        resp = self.client.get('/api/expense/?limit=10&offset=0')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn('has_more', resp.data)
+        self.assertEqual(resp.data['count'], 15)
+        self.assertEqual(len(resp.data['results']), 10)
+        self.assertTrue(resp.data['has_more'])
+
+
+

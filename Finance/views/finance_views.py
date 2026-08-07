@@ -11,10 +11,10 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404
 
-from Finance.models import Income, Expense, Member
+from Finance.models import Income, Expense, Member, Building
 from Finance.serializers import IncomeSerializer, ExpenseSerializer
 from Finance.services import get_financial_summary
-from .permissions import is_super_admin, is_building_admin, IsBuildingAdmin, IsSuperAdmin
+from .permissions import is_super_admin, is_building_admin, IsBuildingAdmin, IsSuperAdmin, IsAdminOrBuildingAdmin
 
 
 class IncomeViewSet(viewsets.ModelViewSet):
@@ -23,7 +23,8 @@ class IncomeViewSet(viewsets.ModelViewSet):
     Optimized with deep select_related to eliminate N+1 query bottlenecks.
     """
     queryset = Income.objects.select_related(
-        "member", "member__user", "member__user__flat", "member__user__flat__building"
+        "member", "member__user", "member__user__flat", "member__user__flat__building",
+        "building", "special_charge"
     ).all()
     serializer_class = IncomeSerializer
 
@@ -35,17 +36,78 @@ class IncomeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if is_super_admin(user):
-            return self.queryset
-            
-        # Safe structural navigation to protect against NoneType attribute drops
-        user_building = getattr(getattr(user, 'flat', None), 'building', None)
+        qs = self.queryset
         
-        if is_building_admin(user):
-            return self.queryset.filter(member__user__flat__building=user_building)
-            
-        # Regular residents only see their own payment histories
-        return self.queryset.filter(member__user=user)
+        scope = self.request.query_params.get("scope") or self.request.query_params.get("admin")
+        building_id = self.request.query_params.get("building_id")
+
+        if scope in ["all", "true"] or self.action in ["verify", "reject"]:
+            if is_super_admin(user):
+                if building_id:
+                    qs = qs.filter(building_id=building_id)
+            elif is_building_admin(user):
+                user_building = getattr(getattr(user, 'flat', None), 'building', None) or getattr(user, 'building_admin_for', None)
+                if user_building:
+                    qs = qs.filter(building=user_building)
+                else:
+                    qs = qs.filter(member__user=user)
+            else:
+                qs = qs.filter(member__user=user)
+        else:
+            # Default scope: return ONLY personal income payments for the logged-in user
+            qs = qs.filter(member__user=user)
+
+        # Filters
+        start_date = self.request.query_params.get("start_date")
+        end_date = self.request.query_params.get("end_date")
+        min_amount = self.request.query_params.get("min_amount")
+        max_amount = self.request.query_params.get("max_amount")
+        income_status = self.request.query_params.get("status")
+
+        if start_date:
+            qs = qs.filter(date__gte=start_date)
+        if end_date:
+            qs = qs.filter(date__lte=end_date)
+        if min_amount:
+            try:
+                qs = qs.filter(amount__gte=float(min_amount))
+            except ValueError:
+                pass
+        if max_amount:
+            try:
+                qs = qs.filter(amount__lte=float(max_amount))
+            except ValueError:
+                pass
+        if income_status and income_status != 'all':
+            qs = qs.filter(status=income_status)
+
+        return qs.order_by("-date", "-id")
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        limit = request.query_params.get("limit")
+        offset = request.query_params.get("offset")
+        
+        if limit is not None:
+            try:
+                limit_val = max(1, int(limit))
+                offset_val = max(0, int(offset)) if offset is not None else 0
+                total_count = queryset.count()
+                page_qs = queryset[offset_val : offset_val + limit_val]
+                serializer = self.get_serializer(page_qs, many=True)
+                return Response({
+                    "count": total_count,
+                    "results": serializer.data,
+                    "has_more": (offset_val + limit_val) < total_count,
+                    "limit": limit_val,
+                    "offset": offset_val
+                }, status=status.HTTP_200_OK)
+            except ValueError:
+                pass
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -66,7 +128,6 @@ class IncomeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def verify(self, request, pk=None):
-        # FIX: Filter lookup through get_queryset to stop Admins from altering foreign building records
         income = get_object_or_404(self.get_queryset(), pk=pk)
         income.status = 'verified'
         income.save(update_fields=["status"])
@@ -74,7 +135,6 @@ class IncomeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
-        # FIX: Cross-building isolation filter via local get_queryset lookup injection
         income = get_object_or_404(self.get_queryset(), pk=pk)
         income.status = 'fraud'
         income.save(update_fields=["status"])
@@ -89,32 +149,93 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = ExpenseSerializer
 
     def get_permissions(self):
-        # FIX: Restrict write actions (POST, PUT, DELETE) exclusively to Admins.
-        # This blocks malicious residents from executing unauthorized financial operations.
+        # Allow both Super Admin and Building Admin to manage expenses.
+        # Regular residents are blocked from non-SAFE methods.
         if self.request.method in permissions.SAFE_METHODS:
             return [permissions.IsAuthenticated()]
-        return [IsBuildingAdmin()]
+        return [IsAdminOrBuildingAdmin()]
 
     def get_queryset(self):
         user = self.request.user
+        qs = self.queryset
+
         if is_super_admin(user):
-            return self.queryset
-            
-        if is_building_admin(user):
-            user_building = getattr(getattr(user, 'flat', None), 'building', None)
-            return self.queryset.filter(building=user_building)
-            
-        # Standard residents have no visibility over underlying society layout expenses
-        return Expense.objects.none()
+            building_id = self.request.query_params.get("building_id")
+            if building_id:
+                qs = qs.filter(building_id=building_id)
+        elif is_building_admin(user):
+            user_building = getattr(getattr(user, 'flat', None), 'building', None) or getattr(user, 'building_admin_for', None)
+            qs = qs.filter(building=user_building)
+        else:
+            return Expense.objects.none()
+
+        # Filters
+        category_id = self.request.query_params.get("category_id") or self.request.query_params.get("category")
+        start_date = self.request.query_params.get("start_date")
+        end_date = self.request.query_params.get("end_date")
+        min_amount = self.request.query_params.get("min_amount")
+        max_amount = self.request.query_params.get("max_amount")
+
+        if category_id:
+            qs = qs.filter(category_id=category_id)
+        if start_date:
+            qs = qs.filter(date__gte=start_date)
+        if end_date:
+            qs = qs.filter(date__lte=end_date)
+        if min_amount:
+            try:
+                qs = qs.filter(amount__gte=float(min_amount))
+            except ValueError:
+                pass
+        if max_amount:
+            try:
+                qs = qs.filter(amount__lte=float(max_amount))
+            except ValueError:
+                pass
+
+        return qs.order_by("-date", "-id")
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        limit = request.query_params.get("limit")
+        offset = request.query_params.get("offset")
+        
+        if limit is not None:
+            try:
+                limit_val = max(1, int(limit))
+                offset_val = max(0, int(offset)) if offset is not None else 0
+                total_count = queryset.count()
+                page_qs = queryset[offset_val : offset_val + limit_val]
+                serializer = self.get_serializer(page_qs, many=True)
+                return Response({
+                    "count": total_count,
+                    "results": serializer.data,
+                    "has_more": (offset_val + limit_val) < total_count,
+                    "limit": limit_val,
+                    "offset": offset_val
+                }, status=status.HTTP_200_OK)
+            except ValueError:
+                pass
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def perform_create(self, serializer):
         user = self.request.user
         if is_super_admin(user):
+            building_id = self.request.data.get('building_id') or self.request.data.get('building')
+            if building_id and 'building' not in serializer.validated_data:
+                try:
+                    building = Building.objects.get(pk=building_id)
+                    serializer.save(building=building)
+                    return
+                except (Building.DoesNotExist, ValueError):
+                    pass
             serializer.save()
             return
             
-        # Automatically tie the building to the logged-in Building Admin's domain profile
-        user_building = getattr(getattr(user, 'flat', None), 'building', None)
+        user_building = getattr(getattr(user, 'flat', None), 'building', None) or getattr(user, 'building_admin_for', None)
         if not user_building:
             raise PermissionDenied("You must be linked to an operational building footprint to submit expenses.")
             
@@ -149,7 +270,8 @@ class FinancialSummaryReport(APIView):
         except ValueError:
             return Response({"error": "Target year must be a valid base-10 numerical entry."}, status=status.HTTP_400_BAD_REQUEST)
 
-        data = get_financial_summary(start_year, building)
+        clear_cache = request.GET.get("clear_cache", "").lower() in ["true", "1"] or request.GET.get("refresh", "").lower() in ["true", "1"]
+        data = get_financial_summary(start_year, building, clear_cache=clear_cache)
         return Response(data, status=status.HTTP_200_OK)
 
 

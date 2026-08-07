@@ -9,17 +9,20 @@ from .income_services import get_opening_balance, get_member_income_table
 from .expense_services import get_expense_summary
 
 
-def get_financial_summary(start_year, building):
+def get_financial_summary(start_year, building, clear_cache=False):
     """
     Aggregates opening balance, member income, expense categories,
     and closing balance into a complete financial summary report.
-    Caches result for 15 minutes.
+    Caches result for 15 minutes. If clear_cache is True, invalidates the cache key.
     """
     building_id = getattr(building, 'id', building)
     cache_key = f"fin_summary_{building_id}_{start_year}"
-    cached_result = cache.get(cache_key)
-    if cached_result is not None:
-        return cached_result
+    if clear_cache:
+        cache.delete(cache_key)
+    else:
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            return cached_result
 
     opening_balance = get_opening_balance(start_year, building)
     income_table = get_member_income_table(start_year, building)
