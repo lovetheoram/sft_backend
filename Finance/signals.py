@@ -11,15 +11,7 @@ def create_member_for_resident(sender, instance, created, **kwargs):
         Member.objects.create(user=instance)
 
 
-@receiver(post_save, sender=Income)
-def notify_admin_on_income(sender, instance, created, **kwargs):
-    if created:
-        Notification.objects.create(
-            user=instance.member.user,  # linked to the resident
-            income=instance,
-            message=f"{instance.member.user.get_full_name()} submitted ₹{instance.amount} for verification.",
-            seen=False
-        )
+# Income notifications on creation removed as admins audit income directly in Income Audit panel
 
 
 def _invalidate_financial_summary_cache(building_id, event_date=None):
