@@ -18,6 +18,6 @@ from .finance_serializers import (
 )
 
 from .society_serializers import (
-    ComplaintSerializer, AnnouncementSerializer,
+    ComplaintSerializer, ComplaintCommentSerializer, AnnouncementSerializer,
     SocietyDocumentSerializer, NotificationSerializer
 )

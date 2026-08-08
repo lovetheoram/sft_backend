@@ -35,5 +35,7 @@ class IsAdminOrBuildingAdmin(BasePermission):
         if is_super_admin(request.user):
             return True
         if is_building_admin(request.user):
-            return getattr(obj, 'building', None) == request.user.building_admin_for
+            user_building = getattr(getattr(request.user, 'flat', None), 'building', None)
+            obj_building = getattr(obj, 'building', None)
+            return user_building is not None and user_building == obj_building
         return False

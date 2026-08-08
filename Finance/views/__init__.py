@@ -26,5 +26,5 @@ from .finance_views import (
 
 from .society_views import (
     NotificationViewSet, AnnouncementViewSet,
-    SocietyDocumentViewSet, ComplainViewSet
+    SocietyDocumentViewSet, ComplainViewSet, ComplaintCommentViewSet
 )

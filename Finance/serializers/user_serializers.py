@@ -83,10 +83,14 @@ class SignupSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     flat = FlatSerializer(read_only=True)
+    member_id = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'flat', 'phone']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role', 'flat', 'phone', 'member_id']
+
+    def get_member_id(self, obj):
+        return obj.member.id if hasattr(obj, 'member') and obj.member else None
 
 
 class MemberSerializer(serializers.ModelSerializer):

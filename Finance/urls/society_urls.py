@@ -6,7 +6,7 @@
 
 from rest_framework.routers import DefaultRouter
 from Finance.views import (
-    NotificationViewSet, AnnouncementViewSet, SocietyDocumentViewSet, ComplainViewSet
+    NotificationViewSet, AnnouncementViewSet, SocietyDocumentViewSet, ComplainViewSet, ComplaintCommentViewSet
 )
 
 router = DefaultRouter()
@@ -14,5 +14,6 @@ router.register('notifications', NotificationViewSet, basename='notifications')
 router.register('announcements', AnnouncementViewSet, basename='announcements')
 router.register('documents', SocietyDocumentViewSet, basename='documents')
 router.register('complaints', ComplainViewSet, basename='complaints')
+router.register('complaint-comments', ComplaintCommentViewSet, basename='complaint-comments')
 
 urlpatterns = []

@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404
 
-from Finance.models import Income, Expense, Member, Building
+from Finance.models import Income, Expense, Member, Building, Notification
 from Finance.serializers import IncomeSerializer, ExpenseSerializer
 from Finance.services import get_financial_summary
 from .permissions import is_super_admin, is_building_admin, IsBuildingAdmin, IsSuperAdmin, IsAdminOrBuildingAdmin
@@ -29,9 +29,9 @@ class IncomeViewSet(viewsets.ModelViewSet):
     serializer_class = IncomeSerializer
 
     def get_permissions(self):
-        # Strict protection: Only authenticated users can touch income endpoints
-        if self.action in ['verify', 'reject']:
-            return [IsBuildingAdmin()]
+        # Strict protection: Only authenticated admins can modify/delete/verify/reject income records
+        if self.action in ['verify', 'reject', 'destroy', 'update', 'partial_update']:
+            return [IsAdminOrBuildingAdmin()]
         return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
@@ -111,7 +111,47 @@ class IncomeViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
+        request_data = self.request.data
         
+        target_member_id = request_data.get('member_id')
+        target_user_id = request_data.get('user_id')
+
+        # Admin creating payment on behalf of a resident/user
+        if (is_super_admin(user) or is_building_admin(user)) and (target_member_id or target_user_id):
+            target_member = None
+            if target_member_id:
+                try:
+                    target_member = Member.objects.get(pk=target_member_id)
+                except Member.DoesNotExist:
+                    raise ValidationError({"member_id": "Target member record does not exist."})
+            elif target_user_id:
+                target_member, _ = Member.objects.get_or_create(user_id=target_user_id)
+
+            if target_member:
+                target_building = getattr(getattr(target_member.user, 'flat', None), 'building', None)
+                if not target_building:
+                    target_building = getattr(getattr(user, 'flat', None), 'building', None)
+                
+                # Cross-building isolation check for Building Admins
+                if is_building_admin(user) and not is_super_admin(user):
+                    admin_building = getattr(getattr(user, 'flat', None), 'building', None) or getattr(user, 'building_admin_for', None)
+                    if admin_building and target_building and admin_building.id != target_building.id:
+                        raise PermissionDenied("Building Admins can only record payments for residents in their own building.")
+                
+                explicit_building_id = request_data.get('building_id')
+                if explicit_building_id:
+                    if is_building_admin(user) and not is_super_admin(user):
+                        admin_building = getattr(getattr(user, 'flat', None), 'building', None) or getattr(user, 'building_admin_for', None)
+                        if admin_building and str(explicit_building_id) != str(admin_building.id):
+                            raise PermissionDenied("Building Admins cannot specify payments for a different building.")
+                    try:
+                        target_building = Building.objects.get(pk=explicit_building_id)
+                    except Building.DoesNotExist:
+                        pass
+
+                serializer.save(member=target_member, building=target_building, status='verified')
+                return
+
         # Super Admins bypass profile restrictions and define fields directly
         if is_super_admin(user):
             serializer.save()
@@ -136,9 +176,41 @@ class IncomeViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         income = get_object_or_404(self.get_queryset(), pk=pk)
+        reason = request.data.get('reason', '').strip()
         income.status = 'fraud'
         income.save(update_fields=["status"])
-        return Response({"status": "Income record flagged as fraudulent and rejected."}, status=status.HTTP_200_OK)
+
+        if income.member and hasattr(income.member, 'user'):
+            msg = f"Your payment record of ₹{income.amount} dated {income.date} was rejected by admin."
+            if reason:
+                msg += f" Reason: {reason}"
+            Notification.objects.create(
+                user=income.member.user,
+                income=income,
+                message=msg,
+                seen=False
+            )
+
+        return Response({"status": "Income record flagged as rejected.", "reason": reason}, status=status.HTTP_200_OK)
+
+    def perform_update(self, serializer):
+        updated_income = serializer.save()
+        if updated_income.member and hasattr(updated_income.member, 'user'):
+            Notification.objects.create(
+                user=updated_income.member.user,
+                income=updated_income,
+                message=f"Your payment record of ₹{updated_income.amount} dated {updated_income.date} has been updated by admin.",
+                seen=False
+            )
+
+    def perform_destroy(self, instance):
+        if instance.member and hasattr(instance.member, 'user'):
+            Notification.objects.create(
+                user=instance.member.user,
+                message=f"Your payment record of ₹{instance.amount} dated {instance.date} has been removed by admin.",
+                seen=False
+            )
+        instance.delete()
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):
@@ -164,7 +236,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             if building_id:
                 qs = qs.filter(building_id=building_id)
         elif is_building_admin(user):
-            user_building = getattr(getattr(user, 'flat', None), 'building', None) or getattr(user, 'building_admin_for', None)
+            user_building = getattr(getattr(user, 'flat', None), 'building', None)
             qs = qs.filter(building=user_building)
         else:
             return Expense.objects.none()
@@ -235,7 +307,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             serializer.save()
             return
             
-        user_building = getattr(getattr(user, 'flat', None), 'building', None) or getattr(user, 'building_admin_for', None)
+        user_building = getattr(getattr(user, 'flat', None), 'building', None)
         if not user_building:
             raise PermissionDenied("You must be linked to an operational building footprint to submit expenses.")
             
