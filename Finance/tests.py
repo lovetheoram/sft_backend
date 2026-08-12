@@ -469,4 +469,69 @@ class PaginationAndScopeTest(TestCase):
         self.assertTrue(resp.data['has_more'])
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 10: Category Building Isolation & Duplicate Prevention
+# ─────────────────────────────────────────────────────────────────────────────
+
+class BuildingCategoryIsolationTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.b1 = Building.objects.create(name="Tower One")
+        self.b2 = Building.objects.create(name="Tower Two")
+
+        self.flat1 = Flat.objects.create(building=self.b1, number="101")
+        self.admin1 = User.objects.create_user(
+            username='admin1', password='pass123', role='admin', flat=self.flat1
+        )
+
+        self.flat2 = Flat.objects.create(building=self.b2, number="201")
+        self.admin2 = User.objects.create_user(
+            username='admin2', password='pass123', role='admin', flat=self.flat2
+        )
+
+    def _get_token(self, username, password='pass123'):
+        resp = self.client.post('/api/token/', {'username': username, 'password': password})
+        return resp.data['access']
+
+    def test_same_category_name_allowed_across_different_buildings(self):
+        """Building 1 and Building 2 can both have a category named 'Maintenance'."""
+        c1 = Category.objects.create(name="Maintenance", building=self.b1)
+        c2 = Category.objects.create(name="Maintenance", building=self.b2)
+        self.assertNotEqual(c1.id, c2.id)
+        self.assertEqual(c1.building, self.b1)
+        self.assertEqual(c2.building, self.b2)
+
+    def test_category_serializer_reuses_duplicate_category(self):
+        """Creating same-name category in same building returns existing instance."""
+        token = self._get_token('admin1')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        # First post
+        resp1 = self.client.post('/api/categories/', {'name': 'Security'})
+        self.assertEqual(resp1.status_code, status.HTTP_201_CREATED)
+        cat_id_1 = resp1.data['id']
+
+        # Second post with same name
+        resp2 = self.client.post('/api/categories/', {'name': 'security'})
+        self.assertEqual(resp2.status_code, status.HTTP_201_CREATED)
+        cat_id_2 = resp2.data['id']
+
+        self.assertEqual(cat_id_1, cat_id_2)
+
+    def test_building_admin_category_list_isolation(self):
+        """Building Admin 1 only sees categories belonging to Building 1."""
+        Category.objects.create(name="Lift Repair", building=self.b1)
+        Category.objects.create(name="Garden Care", building=self.b2)
+
+        token1 = self._get_token('admin1')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token1}')
+        resp1 = self.client.get('/api/categories/')
+        self.assertEqual(resp1.status_code, status.HTTP_200_OK)
+
+        cat_names = [c['name'] for c in resp1.data]
+        self.assertIn("Lift Repair", cat_names)
+        self.assertNotIn("Garden Care", cat_names)
+
+
+
 

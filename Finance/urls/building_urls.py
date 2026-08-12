@@ -13,6 +13,7 @@ router = DefaultRouter()
 router.register('building', BuildingViewSet)
 router.register('flat', FlatViewSet)
 router.register('categories', CategoryViewSet, basename='categories')
+router.register('category', CategoryViewSet, basename='category')
 router.register('specialcharges', SpecialChargeViewSet, basename='specialcharges')
 
 urlpatterns = []

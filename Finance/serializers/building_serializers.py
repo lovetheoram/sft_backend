@@ -4,6 +4,7 @@
 =============================================================================
 """
 
+import re
 from rest_framework import serializers
 from Finance.models import Building, Flat, Category, SpecialCharge
 
@@ -38,11 +39,20 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'building', 'building_id']
 
     def create(self, validated_data):
-        building = validated_data.pop('building_id', None)
+        building = validated_data.pop('building', None) or validated_data.pop('building_id', None)
         if not building:
             request = self.context.get('request')
             if request and hasattr(request, 'user'):
-                building = getattr(getattr(request.user, "flat", None), "building", None)
+                user = request.user
+                building = getattr(getattr(user, "flat", None), "building", None) or getattr(user, "building_admin_for", None)
+
+        name = re.sub(r'\s+', ' ', validated_data.get('name', '').strip())
+        if building and name:
+            existing = Category.objects.filter(building=building, name__iexact=name).first()
+            if existing:
+                return existing
+
+        validated_data['name'] = name
         return Category.objects.create(building=building, **validated_data)
 
 

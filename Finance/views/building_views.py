@@ -67,25 +67,47 @@ class FlatViewSet(viewsets.ModelViewSet):
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.select_related('building').all()
     serializer_class = CategorySerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        if is_super_admin(user):
-            return Category.objects.all().order_by('name')
-
         building_id = self.request.query_params.get('building_id')
-        user_building = getattr(getattr(user, "flat", None), "building", None)
+        user_building = getattr(getattr(user, "flat", None), "building", None) or getattr(user, "building_admin_for", None)
+
+        if is_super_admin(user):
+            if building_id:
+                return self.queryset.filter(building_id=building_id).order_by('name')
+            return self.queryset.order_by('name')
 
         if building_id:
-            return Category.objects.filter(building_id=building_id).order_by('name')
+            return self.queryset.filter(building_id=building_id).order_by('name')
         elif user_building:
-            return Category.objects.filter(
-                models.Q(building=user_building) | models.Q(building__isnull=True)
-            ).order_by('name')
+            return self.queryset.filter(building=user_building).order_by('name')
 
-        return Category.objects.all().order_by('name')
+        return self.queryset.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        building_id = self.request.data.get('building_id') or self.request.data.get('building')
+        
+        if is_super_admin(user):
+            if building_id:
+                try:
+                    building = Building.objects.get(pk=building_id)
+                    serializer.save(building=building)
+                    return
+                except (Building.DoesNotExist, ValueError):
+                    pass
+            serializer.save()
+            return
+
+        user_building = getattr(getattr(user, "flat", None), "building", None) or getattr(user, "building_admin_for", None)
+        if not user_building:
+            raise PermissionDenied("You must be linked to an operational building to manage expense categories.")
+
+        serializer.save(building=user_building)
 
 
 class SpecialChargeViewSet(viewsets.ModelViewSet):

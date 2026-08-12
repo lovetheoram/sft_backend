@@ -41,11 +41,15 @@ class Flat(models.Model):
 
 
 class Category(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
     building = models.ForeignKey(Building, on_delete=models.CASCADE)
 
+    class Meta:
+        unique_together = ('building', 'name')
+        verbose_name_plural = "Categories"
+
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.building.name})" if self.building else self.name
 
 
 class SpecialCharge(models.Model):
