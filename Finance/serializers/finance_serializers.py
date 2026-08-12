@@ -122,10 +122,31 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         mutable_data = data.copy() if hasattr(data, 'copy') else dict(data)
-        if 'category' in mutable_data and 'category_id' not in mutable_data:
-            mutable_data['category_id'] = mutable_data['category']
+        
+        cat_val = mutable_data.get('category_id') or mutable_data.get('category') or mutable_data.get('category_name')
+        if cat_val is not None:
+            if isinstance(cat_val, str) and not cat_val.isdigit():
+                b_val = mutable_data.get('building_id') or mutable_data.get('building')
+                request = self.context.get('request')
+                user = getattr(request, 'user', None) if request else None
+                b_obj = None
+                if b_val:
+                    if isinstance(b_val, Building):
+                        b_obj = b_val
+                    elif str(b_val).isdigit():
+                        b_obj = Building.objects.filter(pk=int(b_val)).first()
+                if not b_obj and user:
+                    b_obj = getattr(getattr(user, 'flat', None), 'building', None) or getattr(user, 'building_admin_for', None)
+                
+                if b_obj:
+                    cat_obj, _ = Category.objects.get_or_create(building=b_obj, name=cat_val.strip())
+                    mutable_data['category_id'] = cat_obj.id
+            elif 'category_id' not in mutable_data:
+                mutable_data['category_id'] = cat_val
+
         if 'building' in mutable_data and 'building_id' not in mutable_data:
             mutable_data['building_id'] = mutable_data['building']
+            
         return super().to_internal_value(mutable_data)
 
     def validate(self, attrs):
