@@ -1,0 +1,1 @@
+The user repeatedly says "hi," and the AI consistently responds with an "Error occurred." message.

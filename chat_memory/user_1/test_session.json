@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "hi"
+  },
+  {
+    "role": "assistant",
+    "content": "Hello! I am your society financial assistant. I can help you with financial information for your society. What would you like to know?"
+  }
+]
