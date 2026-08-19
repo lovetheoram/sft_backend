@@ -14,6 +14,7 @@ import time
 import hashlib
 import numpy as np
 from django.conf import settings
+from langchain_core.embeddings import Embeddings
 
 # -----------------------------------------------------------------------------
 # 📁 BASE VECTOR MEMORY DIRECTORY
@@ -24,7 +25,7 @@ VECTOR_DIR = os.path.join(settings.BASE_DIR, "vector_memory")
 # -----------------------------------------------------------------------------
 # 🧠 SAFE EMBEDDINGS CLASS — ZERO-CRASH HYBRID ENGINE
 # -----------------------------------------------------------------------------
-class SafeEmbeddings:
+class SafeEmbeddings(Embeddings):
     """
     Hybrid Embedding Provider:
     - Primary: Google Gemini Cloud API (models/text-embedding-004) if valid AIzaSy... key exists.
@@ -33,6 +34,11 @@ class SafeEmbeddings:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         self.gemini = None
+
+    def __call__(self, text):
+        if isinstance(text, list):
+            return self.embed_documents(text)
+        return self.embed_query(text)
 
     def _get_gemini(self):
         if self.gemini is None and self.api_key and self.api_key.startswith("AIzaSy"):
